@@ -35,6 +35,8 @@ type RpcCall = {
   comment: string;
   stream: boolean;
   shell?: string;
+  httpPath?: string;
+  httpMethod?: string;
 };
 
 type Message = {
@@ -65,11 +67,11 @@ function printFields(fields: Field[]) {
   fields.forEach((field) => {
     let typeStr: string;
     if (field.key) {
-      typeStr =`map&lt;${field.key}, ${formatFieldType(field)}&gt;`;
+      typeStr =`map<${field.key}, ${formatFieldType(field)}>`;
     } else {
       typeStr = `${formatFieldType(field)}${field.repeated ? ' array' : ''}`;
     }
-    writeLine(`${field.name} | ${typeStr} | ${field.comment}`);
+    writeLine(`${field.name} | \`${typeStr}\` | ${field.comment}`);
   });
 }
 
@@ -126,7 +128,19 @@ while (index < lines.length) {
       commentLine = lines[index - commentIndex].trimLeft();
     }
 
-    services[services.length - 1].calls.push({ name, requestType, responseType, stream, comment, shell });
+    let httpPath: string | undefined
+    let httpMethod: string | undefined
+
+    let optionIndex = 1
+    let optionLine = lines[index + optionIndex].trimLeft();
+
+    if (optionLine.startsWith('option(google.api.http)')) {
+      let splLine = lines[index + optionIndex].trimLeft().split(": ")
+      httpMethod = splLine[0].toUpperCase()
+      httpPath = splLine[1].replace("\"", "")
+    }
+
+    services[services.length - 1].calls.push({ name, requestType, responseType, stream, comment, shell, httpPath, httpMethod });
   } else if (line.startsWith('message ')) {
     const name = line.substring(8).replace(/[{} ]/g, '')
 
@@ -207,7 +221,7 @@ title: API Reference
 language_tabs:
   - shell
   - javascript
-  - python
+  - go
 
 toc_footers:
   - <a href='https://github.com/lord/slate'>Documentation Powered by Slate</a>
@@ -233,18 +247,6 @@ var sslCreds = grpc.credentials.createSsl(tlsCert);
 var ${serviceNameLower}Client = new ${serviceNameLower}Proto.${service.name}(host + ':' + port, sslCreds);
 \`\`\``);
 
-  writeLine(`\`\`\`python
-# Python requires you to generate static protobuf code, see the following guide:
-# https://grpc.io/docs/tutorials/basic/python.html#generating-client-and-server-code
-
-import grpc
-import ${protoFilename}_pb2 as ${serviceNameLower}, ${protoFilename}_pb2_grpc as ${serviceNameLower}rpc
-cert = open('path/to/tls.cert', 'rb').read()
-ssl_creds = grpc.ssl_channel_credentials(cert)
-channel = grpc.secure_channel(host + ':' + port, ssl_creds)
-${serviceNameLower}_stub = ${protoFilename}.${service.name}Stub(channel)
-\`\`\``);
-
   writeLine(service.comment);
     
   service.calls.forEach((call) => {
@@ -254,12 +256,13 @@ ${serviceNameLower}_stub = ${protoFilename}.${service.name}Stub(channel)
     const response = messages.get(call.responseType)!;
 
     writeLine('```javascript');
+    writeLine('// GRPC');
     if (request.fields.length === 0) {
       writeLine('var request = {};');
     } else {
       writeLine('var request = {');
       request.fields.forEach((field) => {
-        writeLine(`  ${snakeToCamelCase(field.name)}: <${field.type}${field.repeated ? '[]' : ''}>,`);
+        writeLine(`  ${snakeToCamelCase(field.name)}: "<${field.type}${field.repeated ? '[]' : ''}>",`);
       })
       writeLine('};');
     }
@@ -299,44 +302,12 @@ ${serviceNameLower}Client.${call.name.charAt(0).toLowerCase() + call.name.substr
     }
     writeLine('```');
 
-    writeLine('```python');
-    if (request.fields.length === 0) {
-      writeLine(`request = ${serviceNameLower}.${request.name}()`);
-    } else {
-      writeLine(`request = ${serviceNameLower}.${request.name}(`);
-      request.fields.forEach((field) => {
-        writeLine(`  ${field.name}=<${field.type}${field.repeated ? '[]' : ''}>,`);
-      })
-      writeLine(')');
-    }
-
-    if (call.stream) {
-      writeLine(`for response in stub.${call.name}(request):
-  print(response)`);
-    } else {
-      writeLine(`response = ${serviceNameLower}Stub.${call.name}(request)
-print(response)`);
-    }
-
-    if (response.fields.length === 0) {
-      writeLine('# Output: {}');
-    } else {
-      writeLine('# Output:');
-      writeLine('# {');
-      response.fields.forEach((field, index) => {
-        writeLine(`#  "${field.name}": <${field.type}${field.repeated ? '[]' : ''}>${index < response.fields.length - 1 ? ',' : ''}`);
-      })
-      writeLine('# }');
-    }
-    writeLine('```');
-
-    if (call.shell) {
-      writeLine(`\`\`\`shell
-  ${call.shell}
-  \`\`\``);
-    }
-
     writeLine(call.comment);
+
+    if (call.httpMethod) {
+      writeLine('### HTTP Endpoint');
+      writeLine(`\`${call.httpMethod} ${call.httpPath}\``);
+    }
 
     writeLine('### Request');
     if (!request || request.fields.length === 0) {
@@ -358,6 +329,7 @@ print(response)`);
   });
 });
 
+/*
 writeLine('# Messages');
 messages.forEach((message) => {
   writeLine(`## ${message.name}`);
@@ -380,4 +352,5 @@ enums.forEach((enumVal) => {
   }
 });
 
+*/
 console.log(`slate markdown written to ${slateFile}`);
