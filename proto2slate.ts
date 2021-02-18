@@ -135,7 +135,7 @@ while (index < lines.length) {
     let optionLine = lines[index + optionIndex].trimLeft();
 
     if (optionLine.startsWith('option(google.api.http)')) {
-      let splLine = lines[index + optionIndex].trimLeft().split(": ")
+      let splLine = lines[index + 2].trimLeft().split(": ")
       httpMethod = splLine[0].toUpperCase()
       httpPath = splLine[1].replace("\"", "")
     }
